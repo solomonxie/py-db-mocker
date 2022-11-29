@@ -1,6 +1,6 @@
-BEGIN;
+beGin;
 
-CREATE TABLE email_email (
+CREAte  Table  email_email (
     id integer NOT NULL,
     email varchar(255) NOT NULL,
     email_hash varchar(255) NOT NULL,
@@ -9,17 +9,17 @@ CREATE TABLE email_email (
     updated_at timestamp with time zone NOT NULL
 );
 
-CREATE SEQUENCE email_email_id_seq
+crEAte  seqUENce  email_email_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
     CACHE 1;
 
-ALTER TABLE ONLY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
+ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
 
 
-ALTER TABLE ONLY email_email
+ALTER  TAbLE OnLY  email_email
     ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
 
-COMMIT;
+ coMMit ;
