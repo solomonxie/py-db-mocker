@@ -11,11 +11,10 @@ from copy import deepcopy
 from collections import OrderedDict
 
 import pandas as pd
-from sqlglot import parse
+from sqlglot import parse, exp
 from sqlglot.dialects import Postgres
 from sqlglot.expressions import Expression
 
-from common_utils import is_sublist
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,8 @@ class BaseRelationalDBMocker:
     KEYWORDS = []
 
     def __init__(self, *args, **kwargs):
-        self.table_map = OrderedDict()
+        self.table_map = {}
+        self.sequence_map = {}
         self.table_backup = None
 
     def execute(self, sql: str, params: dict = None):
@@ -37,10 +37,10 @@ class BaseRelationalDBMocker:
             if isinstance(step, (list,)):
                 rows = self.transaction(step)
             else:
-                rows = self.execute_step(step)
+                rows = self.execute_one(step)
         return rows
 
-    def execute_step(self, ast: Expression) -> list:
+    def execute_one(self, ast: Expression) -> list:
         rows = []
         sql = ast.sql().upper()
         tokens = [k for k in self.KEYWORDS if k in sql]
@@ -67,7 +67,7 @@ class BaseRelationalDBMocker:
         rows = []
         try:
             for ast in ast_list:
-                rows = self.execute_step(ast)
+                rows = self.execute_one(ast)
             self.table_map_bakup = None
         except Exception as e:
             self.table_map = self.table_map_bakup  # ROLLBACK
@@ -79,13 +79,13 @@ class BaseRelationalDBMocker:
         return []
 
     def create_table(self, ast: Expression) -> list:
-        return []
+        raise NotImplementedError()
 
     def create_sequence(self, ast: Expression) -> list:
-        return []
+        raise NotImplementedError()
 
     def alter_table(self, ast: Expression) -> list:
-        return []
+        raise NotImplementedError()
 
     def compile_sql(self, stmt: str, params: dict) -> str:
         raise NotImplementedError()
@@ -111,7 +111,25 @@ class BaseRelationalDBMocker:
 
 class PostgresDBMocker(BaseRelationalDBMocker):
     DIALECT = 'postgres'
-    KEYWORDS = sorted(Postgres.Tokenizer.KEYWORDS.keys()) + ['SEQUENCE']
+    KEYWORDS = sorted(Postgres.Tokenizer.KEYWORDS.keys()) + [
+        'SEQUENCE',
+    ]
+
+    def create_table(self, ast: Expression) -> list:
+        col_names = []
+        for c in ast.find_all(exp.ColumnDef):
+            col_names.append(c.name)
+        tablename = ast.this.name
+        self.table_map[tablename] = pd.DataFrame([], columns=col_names)
+        return [{'msg': f'Created table {tablename}'}]
+
+    def create_sequence(self, ast: Expression) -> list:
+        from py_db_mocker.postgres_mocker import PostgresSequence
+        seq = PostgresSequence(sql=ast.sql())
+        if self.sequence_map.get(seq.name):
+            raise NameError(f'Sequence name already existed: {seq.name}')
+        self.sequence_map[seq.name] = seq
+        return [{'msg': f'Created sequence {seq.name}'}]
 
     def compile_sql(self, stmt: str, params: dict = None) -> str:
         """ EXPERIMENTAL FUNC: NOT TO BE USED ON PRODUCTION QUERY """
