@@ -10,9 +10,9 @@ CREAte  Table  email_email (
 );
 
 crEAte  seqUENce  email_email_id_seq
-    START WITH 1
+    START WITH 100
     INCREMENT BY 1
-    NO MINVALUE
+    MINVALUE 10
     NO MAXVALUE
     CACHE 1;
 
