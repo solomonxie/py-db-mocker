@@ -8,7 +8,6 @@ Data Control Langauge: GRANT/INVOKE
 """
 import logging
 from copy import deepcopy
-from collections import OrderedDict
 
 import pandas as pd
 from sqlglot import parse, exp
@@ -26,6 +25,8 @@ class BaseRelationalDBMocker:
     def __init__(self, *args, **kwargs):
         self.table_map = {}
         self.sequence_map = {}
+        self.constraint_map = {}
+        self.default_value_map = {}
         self.table_backup = None
 
     def execute(self, sql: str, params: dict = None):
@@ -130,6 +131,12 @@ class PostgresDBMocker(BaseRelationalDBMocker):
             raise NameError(f'Sequence name already existed: {seq.name}')
         self.sequence_map[seq.name] = seq
         return [{'msg': f'Created sequence {seq.name}'}]
+
+    def alter_table(self, ast: Expression) -> list:
+        from py_db_mocker.postgres_mocker import PostgresAlterTableCondition
+        alter = PostgresAlterTableCondition(sql=ast.sql())
+        __import__('pudb').set_trace()
+        return [{'msg': 'Altered table {}'}]
 
     def compile_sql(self, stmt: str, params: dict = None) -> str:
         """ EXPERIMENTAL FUNC: NOT TO BE USED ON PRODUCTION QUERY """
