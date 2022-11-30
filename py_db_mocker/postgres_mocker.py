@@ -1,4 +1,6 @@
 
+import re
+
 
 class PostgresSequence:
     """
@@ -59,34 +61,66 @@ class PostgresSequence:
 
 class FiniteStateMachineParser:
     DAG = {}
-    DELIMITERS = []
-    TOKENS = []
+    DELIMITER = r''
+    KEYWORDS = []
 
 
 class PostgresAlterTableParser(FiniteStateMachineParser):
+    """
+    REF: https://www.postgresql.org/docs/current/sql-altertable.html
+    """
     DELIMITER = r'[\'"()\s;]'
-    TOKENS = []
+    KEYWORDS = [
+        'ALTER',
+        'TABLE',
+        'IF',
+        'EXISTS',
+        'ONLY',
+        'ADD',
+        'CONSTRAINT',
+        'SET',
+        'COLUMN',
+        'DEFAULT',
+        'PRIMARY',
+        'KEY',
+        'UNIQUE',
+    ]
     DAG = {
         'TOKEN': 'ALTER TABLE',
         'STATE': 'alter_table',
         'NEXT': [{
+            'STATE': 'alter_table_options',
             'OPTIONS': ['IF EXISTS', 'ONLY'],
             'NEXT': [{
-                'STATE': 'tablename',
+                'STATE': 'set_tablename',
                 'NEXT': [
                     {
                         'TOKEN': 'ALTER COLUMN',
                         'STATE': 'alter_column',
-                        'NEXT': [
-                            {
-                                'TOKEN': 'SET DEFAULT',
-                                'STATE': 'set_column_default',
-                            }
-                        ],
+                        'NEXT': [{
+                            'STATE': 'set_column_name',
+                            'NEXT': [
+                                {
+                                    'TOKEN': 'SET DEFAULT',
+                                    'NEXT': [{
+                                        'STATE': 'set_column_default',
+                                    }],
+                                }
+                            ],
+                        }],
                     },
                     {
                         'TOKEN': 'ADD CONSTRAINT',
                         'STATE': 'add_table_constraint',
+                        'NEXT': [{
+                            'STATE': 'set_constraint_name',
+                            'NEXT': [
+                                {
+                                    'TOKEN': 'PRIMARY KEY',
+                                    'STATE': 'set_primary_key',
+                                },
+                            ],
+                        }],
                     },
                 ]
             }],
@@ -94,84 +128,103 @@ class PostgresAlterTableParser(FiniteStateMachineParser):
     }
 
     def __init__(self, sql: str):
-        import re
         self.check_exists = False
         self.only = None
         self.tablename = None
+        self.column_name = None
+        self.constraint_name = None
         self.delimiter = re.compile(self.DELIMITER)
+        self.alter_type = None
+        self.default_value_map = {}
+        self.constraint_map = {}
+        self.handlers = {
+            'alter_table_options': self.alter_table_options,
+            'set_tablename': self.set_tablename,
+            'set_column_name': self.set_column_name,
+            'set_column_default': self.set_column_default,
+            'set_constraint_name': self.set_constraint_name,
+            'set_primary_key': self.set_primary_key,
+        }
         self.next_state(self.DAG, sql.strip())
-        # ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
+        """
+        ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
+        """
 
     def next_state(self, dag: dict, stmt: str):
-        __import__('pudb').set_trace()
-        for x in self.delimiter.finditer(stmt):
+        start, phrases, matched = 0, [], False
+        rest = stmt
+        for m in self.delimiter.finditer(stmt):
+            half, rest = stmt[start:m.span()[0]].strip(), stmt[m.span()[0]:].strip()
+            start = m.span()[1]
+            if not half or not rest:
+                continue
+            if half.upper() in self.KEYWORDS:
+                phrases.append(half.upper())
+            handler = self.handlers.get(dag.get('STATE'))
+            token = ' '.join(phrases) or None
+            if any([
+                token == dag.get('TOKEN'),
+                token in dag.get('OPTIONS', []),
+                handler and dag.get('NEXT'),
+            ]):
+                matched = True
+                _ = handler(token, half, rest) if handler else None
+                break
+        if matched:
+            for next_dag in dag.get('NEXT') or []:
+                self.next_state(next_dag, rest)
+        return
+
+    def alter_table_options(self, token: str, stmt: str, rest: str):
+        if token.upper() == 'IF EXISTS':
             pass
-        return
+        elif token.upper() == 'ONLY':
+            pass
 
+    def set_tablename(self, token: str, stmt: str, rest: str):
+        self.tablename = str(stmt)
 
-class PostgresAlterTableCondition:
-    """
-    REF: https://www.postgresql.org/docs/current/sql-altertable.html
-    """
-    KEYWORDS = [
-        'IF',
-        'EXISTS',
-        'ONLY',
-    ]
-    ACTIONS = [
-        'ADD',
-        'DROP',
-        'ALTER',
-        'SET',
-    ]
+    def set_column_name(self, token: str, stmt: str, rest: str):
+        self.column_name = str(stmt)
 
-    def __init__(self, sql: str):
-        upper_sql = str(sql).upper()
-        parts = [s.strip() for s in upper_sql.split()]
-        if not parts[0:1] != ['ALTER', 'TABLE']:
-            raise NotImplementedError(f'TBD: {sql}')
-        parser = PostgresAlterTableParser(sql)
-        __import__('pudb').set_trace()
-        self.tablename = None
-        self.default_value = None
-        self.constraint = None
-        for i, s in enumerate(parts):
-            __import__('pudb').set_trace()
-            last_token = parts[i - 1] if i > 0 else None
-            last_last_token = parts[i - 2] if i > 1 else None
-            next_token = parts[i + 1] if i + 1 < len(parts) else None
-            if not self.tablename and s in self.ACTIONS and last_token:
-                idx = upper_sql.index(last_token)
-                self.tablename = sql[idx: idx+len(last_token)]
-            # if last_last_token == 'START' and last_token == 'WITH':
-            #     self.value = self.start_with = int(s)
-            # else:
-            #     pass
-        return
+    def set_column_default(self, token: str, stmt: str, rest: str):
+        func_ptn = re.compile(r'\s*\(\'(\s*\w+\s*)\'(::\w+)?\)\s*')
+        func_match = func_ptn.match(rest)
+        entry = f'{self.tablename}.{self.column_name}'
+        if stmt == 'nextval' and func_match:
+            sequence_name = func_match.groups()[0].strip()
+            self.default_value_map[entry] = {'type': 'function', 'name': stmt, 'value': sequence_name}
+        else:
+            self.default_value_map[entry] = {'type': type(rest), 'name': 'fixed_value', 'value': rest}
+        self.alter_type = 'set_column_default'
 
+    def set_constraint_name(self, token: str, stmt: str, rest: str):
+        self.constraint_name = stmt
 
-class PostgresColumnDefaultValue:
-    def __init__(self, action: str):
-        return
-
-
-class PostgresTableConstraint:
-    def __init__(self, action: str):
-        return
+    def set_primary_key(self, token: str, stmt: str, rest: str):
+        ptn = re.compile(r'\s*\(\s*(\w+)\s*\)\s*')
+        match = ptn.match(rest)
+        if match:
+            column_name = match.groups()[0].strip()
+            entry = f'{self.tablename}.{column_name}'
+            self.constraint_map[entry] = {
+                'type': 'primary_key',
+                'value': column_name,
+            }
 
 
 def main():
-    sql = """
-        ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
-    """
-    dv = PostgresAlterTableCondition(sql)
-    __import__('pudb').set_trace()
 
     sql = """
         ALTER  TAbLE OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
     """
-    cs = PostgresAlterTableCondition(sql)
-    __import__('pudb').set_trace()
+    cs = PostgresAlterTableParser(sql)
+    assert cs.constraint_map.get('email_email.id') is not None
+    sql = """
+        ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
+    """
+    dv = PostgresAlterTableParser(sql)
+    assert dv.default_value_map.get('email_email.id') is not None
 
     sql = """
         crEAte  seqUENce  email_email_id_seq
