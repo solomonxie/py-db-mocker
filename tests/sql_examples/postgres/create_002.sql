@@ -10,11 +10,14 @@ CREAte  Table  email_email (
 );
 
 crEAte  seqUENce  email_email_id_seq
-    START WITH 100
     INCREMENT BY 1
     MINVALUE 10
     NO MAXVALUE
-    CACHE 1;
+    CACHE 1
+    -- FAKE:
+    ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass)
+    START WITH 100
+;
 
 ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
 

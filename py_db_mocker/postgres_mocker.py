@@ -1,161 +1,37 @@
 
 import re
+import yaml
 
-
-class PostgresSequence:
-    """
-    REF: https://www.postgresql.org/docs/current/sql-createsequence.html
-    """
-    KEYWORDS = [
-        'START WITH',
-        'INCREMENT BY',
-        'NO',
-        'MINVALUE',
-        'MAXVALUE',
-    ]
-
-    def __init__(self, sql):
-        upper_sql = str(sql).upper()
-        parts = [s.strip() for s in upper_sql.split()]
-        if not parts[0:1] != ['CREATE', 'SEQUENCE']:
-            raise NotImplementedError(f'TBD: {sql}')
-        self.name = None
-        self.value = 0
-        self.start_with = 0
-        self.increment_by = 1
-        self.max_value = None
-        self.min_value = None
-        self.cache = None
-        for i, s in enumerate(parts):
-            last_token = parts[i - 1]
-            last_last_token = parts[i - 2]
-            next_token = parts[i + 1] if i + 1 < len(parts) else None
-            if last_token == 'SEQUENCE':
-                idx = upper_sql.index(s)
-                self.name = sql[idx: idx+len(s)]
-            elif last_last_token == 'START' and last_token == 'WITH':
-                self.value = self.start_with = int(s)
-            elif last_last_token == 'INCREMENT' and last_token == 'BY':
-                self.increment_by = int(s)
-            elif s == 'MINVALUE' and next_token and last_token != 'NO':
-                self.min_value = int(next_token)
-            elif s == 'MINVALUE' and last_token == 'NO':
-                self.min_value = None
-            elif s == 'MAXVALUE' and next_token and last_token != 'NO':
-                self.max_value = int(next_token)
-            elif s == 'MAXVALUE' and last_token == 'NO':
-                self.max_value = None
-            elif s == 'CACHE' and next_token and last_token != 'NO':
-                self.cache = int(next_token)
-            elif s == 'CACHE' and last_token == 'NO':
-                self.cache = None
-            else:
-                pass
-        return
-
-    def next_val(self):
-        self.value += self.increment_by
-        if not (self.min_value <= self.value <= self.max_value):
-            raise ValueError(f'Sequence value [{self.value}] not in [{self.min_value} - {self.max_value}]')
+from py_db_mocker.constants import PG_KEYWORDS
+from py_db_mocker.constants import SEGMENT_TYPE
+from py_db_mocker.constants import SQL_SEGMENT
+from py_db_mocker.constants import PG_ALTER_TABLE_DAG
 
 
 class FiniteStateMachineParser:
-    DAG = {}
-    DELIMITER = r''
+    DELIMITER = re.compile(r'[\'"()\s;]')
     KEYWORDS = []
+    DAG_PATH = ''
 
     def __init__(self, sql: str):
-        self.handlers = {}
-        self.delimiter = re.compile(self.DELIMITER)
-        self.next_state(self.DAG, sql.strip())
+        # self.next_state(self.DAG, sql.strip())
+        __import__('pudb').set_trace()
+        self.dag = yaml.safe_load(open(self.DAG_PATH).read())
+        self.parse_sql(self.dag, sql.strip())
 
-    def next_state(self, dag: dict, stmt: str):
-        start, phrases, matched = 0, [], False
-        rest = stmt
-        for m in self.delimiter.finditer(stmt):
-            half, rest = stmt[start:m.span()[0]].strip(), stmt[m.span()[0]:].strip()
-            start = m.span()[1]
-            if not half or not rest:
-                continue
-            if half.upper() in self.KEYWORDS:
-                phrases.append(half.upper())
-            handler = self.handlers.get(dag.get('STATE'))
-            token = ' '.join(phrases) or None
-            if any([
-                token == dag.get('TOKEN'),
-                token in dag.get('OPTIONS', []),
-                handler and dag.get('NEXT'),
-            ]):
-                matched = True
-                _ = handler(token, half, rest) if handler else None
-                break
-        if matched:
-            for next_dag in dag.get('NEXT') or []:
-                self.next_state(next_dag, rest)
-        return
+    @property
+    def handlers(self):
+        return {}
+
+    def parse_sql(self, states: list, sql: str):
+        pass
 
 
 class PostgresAlterTable(FiniteStateMachineParser):
     """
     REF: https://www.postgresql.org/docs/current/sql-altertable.html
     """
-    DELIMITER = r'[\'"()\s;]'
-    KEYWORDS = [
-        'ALTER',
-        'TABLE',
-        'IF',
-        'EXISTS',
-        'ONLY',
-        'ADD',
-        'CONSTRAINT',
-        'SET',
-        'COLUMN',
-        'DEFAULT',
-        'PRIMARY',
-        'KEY',
-        'UNIQUE',
-    ]
-    DAG = {
-        'TOKEN': 'ALTER TABLE',
-        'STATE': 'alter_table',
-        'NEXT': [{
-            'STATE': 'alter_table_options',
-            'OPTIONS': ['IF EXISTS', 'ONLY'],
-            'NEXT': [{
-                'STATE': 'set_tablename',
-                'NEXT': [
-                    {
-                        'TOKEN': 'ALTER COLUMN',
-                        'STATE': 'alter_column',
-                        'NEXT': [{
-                            'STATE': 'set_column_name',
-                            'NEXT': [
-                                {
-                                    'TOKEN': 'SET DEFAULT',
-                                    'NEXT': [{
-                                        'STATE': 'set_column_default',
-                                    }],
-                                }
-                            ],
-                        }],
-                    },
-                    {
-                        'TOKEN': 'ADD CONSTRAINT',
-                        'STATE': 'add_table_constraint',
-                        'NEXT': [{
-                            'STATE': 'set_constraint_name',
-                            'NEXT': [
-                                {
-                                    'TOKEN': 'PRIMARY KEY',
-                                    'STATE': 'set_primary_key',
-                                },
-                            ],
-                        }],
-                    },
-                ]
-            }],
-        }],
-    }
+    DAG = PG_ALTER_TABLE_DAG
 
     def __init__(self, sql: str):
         self.tablename = None
@@ -164,45 +40,74 @@ class PostgresAlterTable(FiniteStateMachineParser):
         self.alter_type = None
         self.default_value_map = {}
         self.constraint_map = {}
-        self.handlers.update({
+        super().__init__(sql)
+
+    @property
+    def handlers(self):
+        return {
             'alter_table_options': self.alter_table_options,
             'set_tablename': self.set_tablename,
             'set_column_name': self.set_column_name,
             'set_column_default': self.set_column_default,
             'set_constraint_name': self.set_constraint_name,
             'set_primary_key': self.set_primary_key,
-        })
-        super().__init__(sql)
+        }
 
-    def alter_table_options(self, token: str, stmt: str, rest: str):
+    def next_state(self, dag: dict, stmt: str):
+        start, phrases, matched = 0, [], False
+        tail = stmt
+        for m in self.DELIMITER.finditer(stmt):
+            head, tail = stmt[start:m.span()[0]].strip(), stmt[m.span()[0]:].strip()
+            start = m.span()[1]
+            if not head or not tail:
+                continue
+            if head.upper() in PG_KEYWORDS:
+                phrases.append(head.upper())
+            handler = self.handlers.get(dag.get('STATE'))
+            token = ' '.join(phrases) or None
+            if any([
+                token and token == dag.get('TOKEN'),
+                token and token in dag.get('OPTIONS', []),
+                handler and dag.get('NEXT'),
+            ]):
+                matched = True
+                break
+        _ = handler(token, head, tail) if handler else None
+        if matched:
+            # FIXME
+            for next_dag in dag.get('NEXT') or []:
+                self.next_state(next_dag, tail)
+        return
+
+    def alter_table_options(self, token: str, stmt: str, tail: str):
         if token.upper() == 'IF EXISTS':
             pass
         elif token.upper() == 'ONLY':
             pass
 
-    def set_tablename(self, token: str, stmt: str, rest: str):
+    def set_tablename(self, token: str, stmt: str, tail: str):
         self.tablename = str(stmt)
 
-    def set_column_name(self, token: str, stmt: str, rest: str):
+    def set_column_name(self, token: str, stmt: str, tail: str):
         self.column_name = str(stmt)
 
-    def set_column_default(self, token: str, stmt: str, rest: str):
+    def set_column_default(self, token: str, stmt: str, tail: str):
         func_ptn = re.compile(r'\s*\(\'(\s*\w+\s*)\'(::\w+)?\)\s*')
-        func_match = func_ptn.match(rest)
+        func_match = func_ptn.match(tail)
         entry = f'{self.tablename}.{self.column_name}'
         if stmt == 'nextval' and func_match:
             sequence_name = func_match.groups()[0].strip()
             self.default_value_map[entry] = {'type': 'function', 'name': stmt, 'value': sequence_name}
         else:
-            self.default_value_map[entry] = {'type': type(rest), 'name': 'fixed_value', 'value': rest}
+            self.default_value_map[entry] = {'type': type(tail), 'name': 'fixed_value', 'value': tail}
         self.alter_type = 'set_column_default'
 
-    def set_constraint_name(self, token: str, stmt: str, rest: str):
+    def set_constraint_name(self, token: str, stmt: str, tail: str):
         self.constraint_name = stmt
 
-    def set_primary_key(self, token: str, stmt: str, rest: str):
+    def set_primary_key(self, token: str, stmt: str, tail: str):
         ptn = re.compile(r'\s*\(\s*(\w+)\s*\)\s*')
-        match = ptn.match(rest)
+        match = ptn.match(tail)
         if match:
             column_name = match.groups()[0].strip()
             entry = f'{self.tablename}.{column_name}'
@@ -212,6 +117,72 @@ class PostgresAlterTable(FiniteStateMachineParser):
             }
 
 
+class PostgresCreateSequence(FiniteStateMachineParser):
+    """
+    REF: https://www.postgresql.org/docs/15/sql-createsequence.html
+    """
+    DAG_PATH = './py_db_mocker/dag_pg_create_sequence.yaml'
+
+    def __init__(self, sql):
+        self.name = None
+        self.start_with = None
+        self.increment_by = None
+        self.min_value = None
+        self.max_value = None
+        self.cache = None
+        # Stateful variables
+        self.state = None
+        self.token = None
+        self.segment = None
+        self.seg_type = None
+        self.tail = sql
+        super().__init__(sql)
+
+    @property
+    def handlers(self):
+        return {
+            'set_sequence_name': self.set_sequence_name,
+        }
+
+    # def parse_sql(self, states: list, sql: str):
+    #     __import__('pudb').set_trace()
+    #     segment, seg_type, tail = parse_next_sql_segment(sql)
+    #     for dag in states:
+    #         handler = self.handlers.get(dag.get('STATE'))
+    #         token = dag.get('TOKEN')
+    #         matches = [
+    #             token and token == dag.get('TOKEN'),
+    #             token and token in dag.get('OPTIONS', []),
+    #             handler and dag.get('NEXT'),
+    #         ]
+    #         if any(matches):
+    #             _ = handler(segment, tail) if handler else None
+    #     return states, tail
+
+    def next_states(self, states: list, sql: str):
+        pass
+
+    def next_segment(self) -> str:
+        try:
+            m = next(SQL_SEGMENT.finditer(self.tail))
+        except StopIteration:
+            return ''
+        for seg_type, segment in m.groupdict().items():
+            token = segment.upper() if segment else None
+            if seg_type == SEGMENT_TYPE.TOKEN and token not in PG_KEYWORDS:
+                seg_type = SEGMENT_TYPE.NAME
+            if segment:
+                self.segment = segment
+                self.token = token
+                self.seg_type = seg_type
+                self.tail = self.tail[m.span()[1]:]
+                return self.tail
+        return ''
+
+    def set_sequence_name(self, *args, **kwargs):
+        pass
+
+
 def main():
     sql = """
         crEAte  seqUENce  email_email_id_seq
@@ -219,9 +190,12 @@ def main():
         INCREMENT BY 1
         NO MINVALUE
         MAXVALUE 1000
-        CACHE 1;
+        CACHE 1
+        default nextval('email_email_id_seq'::regclass)
+        ;
     """
-    seq = PostgresSequence(sql)
+    seq = PostgresCreateSequence(sql)
+    # seq = PostgresSequence(sql)
     __import__('pudb').set_trace()
     assert seq.name == 'email_email_id_seq'
     assert seq.start_with == 10
@@ -229,6 +203,7 @@ def main():
     assert seq.min_value is None
     assert seq.max_value == 1000
     assert seq.cache == 1
+
     sql = """
         ALTER  TAbLE OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
     """
