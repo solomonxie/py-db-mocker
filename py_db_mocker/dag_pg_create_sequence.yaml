@@ -1,0 +1,32 @@
+NEXT:
+  - TOKEN: CREATE
+    NEXT:
+      - TOKEN: SEQUENCE
+        NEXT:
+          - STATE: set_sequence_name
+            NEXT:
+              - TOKEN: START
+                NEXT:
+                  - TOKEN: WITH
+                  - STATE: set_start_value
+              - TOKEN: INCREMENT
+                NEXT:
+                  - TOKEN: BY
+                  - STATE: set_increment_value
+              - TOKEN: MINVALUE
+                NEXT:
+                  - STATE: set_minvalue
+              - TOKEN: MAXVALUE
+                NEXT:
+                  - STATE: set_maxvalue
+              - TOKEN: NO
+                NEXT:
+                  - TOKEN: MINVALUE
+                    NEXT:
+                      - STATE: set_no_minvalue
+                  - TOKEN: MAXVALUE
+                    NEXT:
+                      - STATE: set_no_maxvalue
+              - TOKEN: CACHE
+                NEXT:
+                  - STATE: set_cache_value
