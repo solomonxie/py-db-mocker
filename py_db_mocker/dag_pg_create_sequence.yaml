@@ -1,0 +1,37 @@
+# REF: https://www.postgresql.org/docs/15/sql-createsequence.html
+NEXT:
+  - STATE: token_create
+    TOKEN: CREATE
+    NEXT:
+      - STATE: token_create_sequence
+        TOKEN: SEQUENCE
+        NEXT:
+          - STATE: set_sequence_name
+            OPTIONS:
+              - STATE: token_start
+                TOKEN: START
+                NEXT:
+                  - STATE: set_start_value
+              - STATE: token_increment
+                TOKEN: INCREMENT
+                NEXT:
+                  - STATE: set_increment_value
+              - STATE: token_minvalue
+                TOKEN: MINVALUE
+                NEXT:
+                  - STATE: set_minvalue
+              - STATE: token_maxvalue
+                TOKEN: MAXVALUE
+                NEXT:
+                  - STATE: set_maxvalue
+              - STATE: token_no
+                TOKEN: "NO"
+                NEXT:
+                  - STATE: set_no_minvalue
+                    TOKEN: MINVALUE
+                  - STATE: set_no_maxvalue
+                    TOKEN: MAXVALUE
+              - STATE: token_cache
+                TOKEN: CACHE
+                NEXT:
+                  - STATE: set_cache_value

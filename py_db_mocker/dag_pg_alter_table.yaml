@@ -1,0 +1,40 @@
+# REF: https://www.postgresql.org/docs/current/sql-altertable.html
+NEXT:
+  - TOKEN: ALTER
+    NEXT:
+      - TOKEN: TABLE
+        OPTIONS:
+          - TOKEN: IF
+            NEXT:
+              - TOKEN: EXISTS
+                STATE: set_table_if_exists
+          - TOKEN: ONLY
+            STATE: set_table_only
+        NEXT:
+          - STATE: set_tablename
+            NEXT:
+              - TOKEN: ADD
+                NEXT:
+                  - TOKEN: CONSTRAINT
+                    STATE: set_action_token
+                    NEXT:
+                      - STATE: set_constraint_name
+                        NEXT:
+                          - TOKEN: PRIMARY
+                            NEXT:
+                              - TOKEN: KEY
+                                NEXT:
+                                  - STATE: set_primary_key
+              - TOKEN: ALTER
+                NEXT:
+                  - TOKEN: COLUMN
+                    NEXT:
+                      - STATE: set_column_name
+                        NEXT:
+                          - TOKEN: SET
+                            NEXT:
+                              - TOKEN: DEFAULT
+                                NEXT:
+                                  - STATE: set_column_default
+                                    NEXT:
+                                      - STATE: set_value_from_func
