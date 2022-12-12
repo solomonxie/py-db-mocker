@@ -1,3 +1,4 @@
+# REF: https://www.postgresql.org/docs/15/sql-createsequence.html
 NEXT:
   - STATE: token_create
     TOKEN: CREATE
