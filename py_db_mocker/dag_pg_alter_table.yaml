@@ -36,3 +36,5 @@ NEXT:
                               - TOKEN: DEFAULT
                                 NEXT:
                                   - STATE: set_column_default
+                                    NEXT:
+                                      - STATE: set_value_from_func

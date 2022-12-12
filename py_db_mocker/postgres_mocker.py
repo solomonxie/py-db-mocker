@@ -5,6 +5,7 @@ import yaml
 from py_db_mocker.constants import PG_KEYWORDS
 from py_db_mocker.constants import SEGMENT_TYPE
 from py_db_mocker.constants import SQL_SEGMENT
+from py_db_mocker.constants import PG_FUNCTIONS
 
 
 class FiniteStateMachineParser:
@@ -26,14 +27,18 @@ class FiniteStateMachineParser:
     def handlers(self):
         return {}
 
+    @property
+    def functions(self):
+        return {}
+
     def run_dag(self, dag: dict):
         statename = dag.get('STATE')
         handler = self.handlers.get(statename)
         _ = handler() if handler else None
         option_map = {d.get('TOKEN'): d for d in dag.get('OPTIONS', [])}
         next_map = {d.get('TOKEN'): d for d in dag.get('NEXT', [])}
-        next_dag = next_map.get(self.token) or (dag['NEXT'][0] if next_map else None)
         self._set_next_segment()
+        next_dag = next_map.get(self.token) or (dag['NEXT'][0] if len(next_map) == 1 else None)
         while option_map.get(self.token):
             self.run_dag(option_map[self.token])
         if next_dag:
@@ -74,15 +79,17 @@ class PostgresAlterTable(FiniteStateMachineParser):
     """
     STATE_MACHINE_PATH = './py_db_mocker/dag_pg_alter_table.yaml'
 
-    def __init__(self, sql: str):
+    def __init__(self, sql: str, sequence_map: dict = None):
         self.table_if_exists = False
         self.table_only = False
         self.tablename = None
         self.column_name = None
+        self.function_name = None
         self.constraint_name = None
         self.alter_type = None
         self.default_value_map = {}
         self.constraint_map = {}
+        self.sequence_map = sequence_map or {}
         super().__init__(sql)
 
     @property
@@ -93,9 +100,16 @@ class PostgresAlterTable(FiniteStateMachineParser):
             'set_tablename': self.set_tablename,
             'set_column_name': self.set_column_name,
             'set_column_default': self.set_column_default,
+            'set_value_from_func': self.set_value_from_func,
             'set_action_token': self.set_action_token,
             'set_constraint_name': self.set_constraint_name,
             'set_primary_key': self.set_primary_key,
+        }
+
+    @property
+    def functions(self):
+        return {
+            'nextval': self.func_nextval,
         }
 
     def set_table_if_exists(self):
@@ -108,15 +122,25 @@ class PostgresAlterTable(FiniteStateMachineParser):
         self.tablename = str(self.segment)
 
     def set_column_name(self):
-        __import__('pudb').set_trace()
         self.column_name = str(self.segment)
 
     def set_column_default(self):
-        __import__('pudb').set_trace()
-        self.default_value_map[self.column_name] = self.segment
+        entry = f'{self.tablename}.{self.column_name}'
+        if self.segment in PG_FUNCTIONS:
+            self.func = self.functions.get(self.segment)
+        else:
+            self.default_value_map[entry] = self.segment
+
+    def set_value_from_func(self):
+        entry = f'{self.tablename}.{self.column_name}'
+        self.default_value_map[entry] = self.segment
+        ptn = re.compile(r'\(([^()]+)\)')
+        match = ptn.match(self.segment)
+        if match:
+            params = match.groups()[0].split(',')
+            self.func(*params)
 
     def set_action_token(self):
-        __import__('pudb').set_trace()
         if self.token == 'COLUMN':
             self._set_next_segment()
 
@@ -134,6 +158,16 @@ class PostgresAlterTable(FiniteStateMachineParser):
                     'type': 'primary_key',
                     'value': col,
                 }
+
+    def func_nextval(self, seq_class, *args, **kwargs):
+        ptn = re.compile(r"'(?P<SEQ_NAME>\w+)'(::(?P<CLASS_NAME>\w+))?")
+        match = ptn.match(seq_class)
+        if match:
+            d = match.groupdict()
+            seqname = d.get('SEQ_NAME')
+            seq = self.sequence_map.get(seqname)
+            if seq:
+                return seq.next_value()
 
 
 class PostgresCreateSequence(FiniteStateMachineParser):
@@ -195,17 +229,18 @@ class PostgresCreateSequence(FiniteStateMachineParser):
 
 def main():
     sql = """
-        ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
-    """
-    cs = PostgresAlterTable(sql)
-    assert cs.constraint_map['email_email.id'] == {'type': 'primary_key', 'value': 'id'}
-
-    sql = """
         ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
     """
     dv = PostgresAlterTable(sql)
     __import__('pudb').set_trace()
     assert dv.default_value_map.get('email_email.id') is not None
+
+    sql = """
+        ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
+    """
+    cs = PostgresAlterTable(sql)
+    __import__('pudb').set_trace()
+    assert cs.constraint_map['email_email.id'] == {'type': 'primary_key', 'value': 'id'}
 
 
 if __name__ == '__main__':
