@@ -14,6 +14,8 @@ from sqlglot import parse, exp
 from sqlglot.dialects import Postgres
 from sqlglot.expressions import Expression
 
+from py_db_mocker.constants import PG_DTYPE_TO_PANDAS
+
 
 logger = logging.getLogger(__name__)
 
@@ -117,26 +119,28 @@ class PostgresDBMocker(BaseRelationalDBMocker):
     ]
 
     def create_table(self, ast: Expression) -> list:
-        col_names = []
+        col_names, dtypes = [], []
         for c in ast.find_all(exp.ColumnDef):
             col_names.append(c.name)
-        tablename = ast.this.name
-        self.table_map[tablename] = pd.DataFrame([], columns=col_names)
+            datatype = c.find(exp.DataType).this.name
+            dtypes.append(PG_DTYPE_TO_PANDAS.get(datatype))
+        tablename = ast.find(exp.Table).this.name
+        df = pd.DataFrame([], columns=col_names)
+        self.table_map[tablename] = df
         return [{'msg': f'Created table {tablename}'}]
 
     def create_sequence(self, ast: Expression) -> list:
-        from py_db_mocker.postgres_mocker import PostgresSequence
-        seq = PostgresSequence(sql=ast.sql())
+        from py_db_mocker.postgres_parser import PgParseCreateSequence
+        seq = PgParseCreateSequence(sql=ast.sql())
         if self.sequence_map.get(seq.name):
             raise NameError(f'Sequence name already existed: {seq.name}')
         self.sequence_map[seq.name] = seq
         return [{'msg': f'Created sequence {seq.name}'}]
 
     def alter_table(self, ast: Expression) -> list:
-        from py_db_mocker.postgres_mocker import PostgresAlterTableCondition
-        alter = PostgresAlterTableCondition(sql=ast.sql())
-        __import__('pudb').set_trace()
-        return [{'msg': 'Altered table {}'}]
+        from py_db_mocker.postgres_parser import PgParseAlterTable
+        alt = PgParseAlterTable(sql=ast.sql())
+        return [{'msg': f'Altered table {alt.tablename}'}]
 
     def compile_sql(self, stmt: str, params: dict = None) -> str:
         """ EXPERIMENTAL FUNC: NOT TO BE USED ON PRODUCTION QUERY """
