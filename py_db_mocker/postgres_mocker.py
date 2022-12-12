@@ -13,15 +13,15 @@ class FiniteStateMachineParser:
     KEYWORDS = []
     STATE_MACHINE_PATH = ''
 
-    def __init__(self, sql: str):
+    def __init__(self, sql: str, **kwargs):
         self.definition = yaml.safe_load(open(self.STATE_MACHINE_PATH).read())
         # Stateful variables
         self.token = None
         self.segment = None
         self.seg_type = None
         self.tail = sql
-        # Start parsing at initiation
-        self.run_dag(self.definition)
+        if sql:
+            self.run_dag(self.definition)
 
     @property
     def handlers(self):
@@ -84,13 +84,12 @@ class PostgresAlterTable(FiniteStateMachineParser):
         self.table_only = False
         self.tablename = None
         self.column_name = None
-        self.function_name = None
         self.constraint_name = None
         self.alter_type = None
         self.default_value_map = {}
         self.constraint_map = {}
         self.sequence_map = sequence_map or {}
-        super().__init__(sql)
+        super().__init__(sql, sequence_map=sequence_map)
 
     @property
     def handlers(self):
@@ -138,7 +137,7 @@ class PostgresAlterTable(FiniteStateMachineParser):
         match = ptn.match(self.segment)
         if match:
             params = match.groups()[0].split(',')
-            self.func(*params)
+            self.default_value_map[entry] = self.func(*params)
 
     def set_action_token(self):
         if self.token == 'COLUMN':
@@ -176,13 +175,17 @@ class PostgresCreateSequence(FiniteStateMachineParser):
     """
     STATE_MACHINE_PATH = './py_db_mocker/dag_pg_create_sequence.yaml'
 
-    def __init__(self, sql):
-        self.name = None
-        self.start_with = None
-        self.increment_by = None
-        self.min_value = None
-        self.max_value = None
-        self.cache = None
+    def __init__(
+        self, sql: str = None, name: str = None, start: int = None, increment: int = None, cache: int = None,
+        min_value: int = None, max_value: int = None,
+    ):
+        self.current_value = None
+        self.name = name
+        self.start = start
+        self.increment = increment
+        self.min_value = min_value
+        self.max_value = max_value
+        self.cache = cache
         super().__init__(sql)
 
     @property
@@ -198,18 +201,27 @@ class PostgresCreateSequence(FiniteStateMachineParser):
             'set_cache_value': self.set_cache_value,
         }
 
+    def next_value(self):
+        v = (self.current_value + self.increment) if self.current_value else self.start
+        if self.max_value and v > self.max_value:
+            raise ValueError(f'{v} bigger than max value {self.max_value}')
+        elif self.min_value and v < self.min_value:
+            raise ValueError(f'{v} smaller than min value {self.min_value}')
+        self.current_value = v
+        return self.current_value
+
     def set_sequence_name(self):
         self.name = self.segment
 
     def set_start_value(self):
         if self.token == 'WITH':
             self._set_next_segment()
-        self.start_with = float(self.segment)
+        self.start = float(self.segment)
 
     def set_increment_value(self):
         if self.token == 'BY':
             self._set_next_segment()
-        self.increment_by = float(self.segment)
+        self.increment = float(self.segment)
 
     def set_minvalue(self):
         self.min_value = float(self.segment)
@@ -254,8 +266,8 @@ def main():
     seq = PostgresCreateSequence(sql)
     __import__('pudb').set_trace()
     assert seq.name == 'email_email_id_seq'
-    assert seq.start_with == 10
-    assert seq.increment_by == 1
+    assert seq.start == 10
+    assert seq.increment == 1
     assert seq.min_value is None
     assert seq.max_value == 1000
     assert seq.cache == 1
