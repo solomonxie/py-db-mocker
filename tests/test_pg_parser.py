@@ -1,23 +1,23 @@
 
-from py_db_mocker.postgres_mocker import PostgresAlterTable
-from py_db_mocker.postgres_mocker import PostgresCreateSequence
+from py_db_mocker.postgres_parser import PgParseAlterTable
+from py_db_mocker.postgres_parser import PgParseCreateSequence
 
 
 def test_alter_table_add_constraint():
     sql = """
         ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
     """
-    cs = PostgresAlterTable(sql)
+    cs = PgParseAlterTable(sql)
     assert cs.constraint_map['email_email.id'] == {'type': 'primary_key', 'value': 'id'}
 
 
 def test_alter_table_set_default_value():
-    seq = PostgresCreateSequence(start=12, increment=3)
+    seq = PgParseCreateSequence(start=12, increment=3)
     seq.next_value()
     sql = """
         ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
     """
-    dv = PostgresAlterTable(sql, sequence_map={'email_email_id_seq': seq})
+    dv = PgParseAlterTable(sql, sequence_map={'email_email_id_seq': seq})
     assert dv.default_value_map.get('email_email.id') == 15
 
 
@@ -31,7 +31,7 @@ def test_create_sequence():
         CACHE 1
         ;
     """
-    seq = PostgresCreateSequence(sql)
+    seq = PgParseCreateSequence(sql)
     assert seq.name == 'email_email_id_seq'
     assert seq.start == 10
     assert seq.increment == 1
