@@ -3,6 +3,7 @@ import re
 
 SQL_SEGMENT = re.compile(r'(?P<TOKEN>\w+)|(?P<SUBEXP>\(.+\))|(?P<LITERAL>\'[^\']+\')|(?P<NUM>\d+)|(?P<FLOAT>\d+\.\d+)')
 
+
 class SEGMENT_TYPE:
     LITERAL = 'LITERAL'
     FUNC = 'FUNC'

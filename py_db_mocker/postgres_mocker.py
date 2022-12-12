@@ -15,15 +15,21 @@ class FiniteStateMachineParser:
 
     def __init__(self, sql: str):
         # self.next_state(self.DAG, sql.strip())
-        __import__('pudb').set_trace()
         self.dag = yaml.safe_load(open(self.DAG_PATH).read())
-        self.parse_sql(self.dag, sql.strip())
+        # Stateful variables
+        self.state = None
+        self.token = None
+        self.segment = None
+        self.seg_type = None
+        self.tail = sql
+        # Start parsing at initiation
+        self.next_state(self.dag.get('NEXT', []))
 
     @property
     def handlers(self):
         return {}
 
-    def parse_sql(self, states: list, sql: str):
+    def next_state(self, states: list):
         pass
 
 
@@ -130,43 +136,63 @@ class PostgresCreateSequence(FiniteStateMachineParser):
         self.min_value = None
         self.max_value = None
         self.cache = None
-        # Stateful variables
-        self.state = None
-        self.token = None
-        self.segment = None
-        self.seg_type = None
-        self.tail = sql
         super().__init__(sql)
 
     @property
     def handlers(self):
         return {
             'set_sequence_name': self.set_sequence_name,
+            'set_start_value': self.set_start_value,
+            'set_increment_value': self.set_increment_value,
+            'set_minvalue': self.set_minvalue,
+            'set_maxvalue': self.set_maxvalue,
+            'set_no_minvalue': self.set_no_minvalue,
+            'set_no_maxvalue': self.set_no_maxvalue,
+            'set_cache_value': self.set_cache_value,
         }
 
-    # def parse_sql(self, states: list, sql: str):
-    #     __import__('pudb').set_trace()
-    #     segment, seg_type, tail = parse_next_sql_segment(sql)
-    #     for dag in states:
-    #         handler = self.handlers.get(dag.get('STATE'))
-    #         token = dag.get('TOKEN')
-    #         matches = [
-    #             token and token == dag.get('TOKEN'),
-    #             token and token in dag.get('OPTIONS', []),
-    #             handler and dag.get('NEXT'),
-    #         ]
-    #         if any(matches):
-    #             _ = handler(segment, tail) if handler else None
-    #     return states, tail
+    def next_state(self, states: list):
+        self._set_next_segment()
+        self.current_dag = self._match_state(states)
+        state = self.current_dag.get('STATE') or ''
+        handler = self.handlers.get(state)
+        _ = handler() if handler else None
+        # Go to next state
+        if self.current_dag.get('NEXT'):
+            self.next_state(self.current_dag['NEXT'])
+        elif self.current_dag.get('OPTIONS'):
+            self.next_options(self.current_dag['OPTIONS'])
+        return
 
-    def next_states(self, states: list, sql: str):
-        pass
+    def next_options(self, states: list):
+        # Multiple-options are allowed, each MUST starts with a TOKEN
+        self._set_next_segment()
+        option_map = {d.get('TOKEN'): d for d in states}
+        while self.token in option_map:
+            dag = option_map[self.token]
+            state = dag.get('STATE')
+            handler = self.handlers.get(state)
+            _ = handler() if handler else None
+            if dag.get('NEXT'):
+                self.next_state(dag['NEXT'])
+            elif dag.get('OPTIONS'):
+                self.next_options(dag['OPTIONS'])
+            self._set_next_segment()
+        return
 
-    def next_segment(self) -> str:
+    def _match_state(self, states: list) -> dict:
+        if len(states) == 1:
+            return states[0]
+        for dag in states:
+            if self.token == dag.get('TOKEN') is not None:
+                return dag
+        raise ValueError('No state found')
+
+    def _set_next_segment(self) -> None:
         try:
             m = next(SQL_SEGMENT.finditer(self.tail))
         except StopIteration:
-            return ''
+            return
         for seg_type, segment in m.groupdict().items():
             token = segment.upper() if segment else None
             if seg_type == SEGMENT_TYPE.TOKEN and token not in PG_KEYWORDS:
@@ -176,22 +202,46 @@ class PostgresCreateSequence(FiniteStateMachineParser):
                 self.token = token
                 self.seg_type = seg_type
                 self.tail = self.tail[m.span()[1]:]
-                return self.tail
-        return ''
+                return
+        return
 
-    def set_sequence_name(self, *args, **kwargs):
-        pass
+    def set_sequence_name(self):
+        self.name = self.segment
+
+    def set_start_value(self):
+        if self.token == 'WITH':
+            self._set_next_segment()
+        self.start_with = float(self.segment)
+
+    def set_increment_value(self):
+        if self.token == 'BY':
+            self._set_next_segment()
+        self.increment_by = float(self.segment)
+
+    def set_minvalue(self):
+        self.min_value = float(self.segment)
+
+    def set_maxvalue(self):
+        self.max_value = float(self.segment)
+
+    def set_no_minvalue(self):
+        self.min_value = None
+
+    def set_no_maxvalue(self):
+        self.max_value = None
+
+    def set_cache_value(self):
+        self.cache = float(self.segment)
 
 
 def main():
     sql = """
         crEAte  seqUENce  email_email_id_seq
-        START WITH 10
+        START 10
         INCREMENT BY 1
         NO MINVALUE
         MAXVALUE 1000
         CACHE 1
-        default nextval('email_email_id_seq'::regclass)
         ;
     """
     seq = PostgresCreateSequence(sql)
