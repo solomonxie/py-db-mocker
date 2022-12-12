@@ -23,15 +23,13 @@ crEAte  seqUENce  email_email_id_seq
     MINVALUE 10
     NO MAXVALUE
     CACHE 1
-    -- FAKE:
-    ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass)
     START WITH 100
 ;
 
 ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
 
 
-ALTER  TAbLE OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
+ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
 
 
 INSERT INTO email_email(email, domain_id) VALUES(
