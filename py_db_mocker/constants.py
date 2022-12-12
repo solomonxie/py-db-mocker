@@ -46,3 +46,9 @@ PG_KEYWORDS = [
 PG_FUNCTIONS = [
     'nextval',
 ]
+
+PG_DTYPE_TO_PANDAS = {
+    'INT': 'int',
+    'VARCHAR': 'str',
+    'TIMESTAMPTZ': 'str',  # FIXME
+}
