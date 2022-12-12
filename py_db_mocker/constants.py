@@ -42,3 +42,7 @@ PG_KEYWORDS = [
     'UNIQUE',
     'WITH',
 ]
+
+PG_FUNCTIONS = [
+    'nextval',
+]
