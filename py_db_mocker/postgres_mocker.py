@@ -242,6 +242,24 @@ def main():
     __import__('pudb').set_trace()
     assert cs.constraint_map['email_email.id'] == {'type': 'primary_key', 'value': 'id'}
 
+    sql = """
+        crEAte  seqUENce  email_email_id_seq
+        START 10
+        INCREMENT BY 1
+        NO MINVALUE
+        MAXVALUE 1000
+        CACHE 1
+        ;
+    """
+    seq = PostgresCreateSequence(sql)
+    __import__('pudb').set_trace()
+    assert seq.name == 'email_email_id_seq'
+    assert seq.start_with == 10
+    assert seq.increment_by == 1
+    assert seq.min_value is None
+    assert seq.max_value == 1000
+    assert seq.cache == 1
+
 
 if __name__ == '__main__':
     main()
