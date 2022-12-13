@@ -1,6 +1,14 @@
 beGin;
 
 
+crEAte  seqUENce  email_email_id_seq
+    INCREMENT BY 1
+    MINVALUE 10
+    NO MAXVALUE
+    --CACHE 1
+    START WITH 100
+;
+
 CREAte  Table  users (
     id integer NOT NULL,
     name varchar(255) NOT NULL,
@@ -10,7 +18,7 @@ CREAte  Table  users (
 );
 
 CREAte  Table  email_email (
-    id integer NOT NULL,
+    id integer NOT NULL DEFAULT nextval('email_email_id_seq'),
     user_id integer NOT NULL,
     email varchar(255) NOT NULL,
     email_hash varchar(255),
@@ -19,27 +27,14 @@ CREAte  Table  email_email (
     updated_at timestamp with time zone DEFAULT now()
 );
 
-crEAte  seqUENce  email_email_id_seq
-    INCREMENT BY 1
-    MINVALUE 10
-    NO MAXVALUE
-    CACHE 1
-    START WITH 100
-;
-
 ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_email_id_seq'::regclass);
 
 
 ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
 
 
-INSERT INTO email_email(id, email, created_at) VALUES(
-    (1, 'a@a.com', '2022-12-13 17:02:40')
-);
-
-
-INSERT INTO email_email(id, email, created_at) VALUES(
-    2, 'b@b.com', '2022-12-14 17:02:40'
+INSERT INTO email_email(user_id, email, created_at) VALUES(
+    1, 'b@b.com', '2022-12-14 17:02:40'
 );
 
 
