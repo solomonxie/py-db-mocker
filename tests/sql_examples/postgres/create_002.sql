@@ -11,6 +11,7 @@ CREAte  Table  users (
 
 CREAte  Table  email_email (
     id integer NOT NULL,
+    user_id integer NOT NULL,
     email varchar(255) NOT NULL,
     email_hash varchar(255),
     domain_id varchar(511),
@@ -54,11 +55,41 @@ INSERT INTO users(id, name, email_id) VALUES(
 
 
 SELECT
-    id, email, 1
+    id,
+    user_id,
+    email
+FROM (
+    SELECT user_id FROM users
+) AS email_email
+where
+    user_id > 0
+;
+
+
+SELECT
+    count(id) as user_email_count,
+    user_id
 FROM email_email
+where
+    user_id > 0
+GROUP BY
+    user_id
+;
+
+
+SELECT
+    A.id AS email_id,
+    A.email,
+    NULL AS user_name,
+    B.id AS user_id,
+    1
+FROM email_email as A
+JOIN users as B ON
+    1=1
+    AND email_email.user_id = users.id
 WHERE
     1=1
-    AND id > 1
+    AND A.id > 1
 ;
 
  coMMit ;
