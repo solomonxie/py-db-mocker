@@ -33,7 +33,12 @@ ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY
 
 
 INSERT INTO email_email(id, email, created_at) VALUES(
-    1, 'a@a.com', '2022-12-13 17:02:40'
+    (1, 'a@a.com', '2022-12-13 17:02:40')
+);
+
+
+INSERT INTO email_email(id, email, created_at) VALUES(
+    2, 'b@b.com', '2022-12-14 17:02:40'
 );
 
 
