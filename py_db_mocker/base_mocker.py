@@ -81,6 +81,23 @@ class BaseRelationalDBMocker:
         return rows
 
     def select(self, ast) -> list:
+        __import__('pudb').set_trace()
+        # Set alias in table_map according to "FROM" and "JOIN"
+        # TBD
+
+        # Join dataframes into one df by conditions
+        # TBD
+
+        # Filter rows by "WHERE"
+        # TBD
+
+        # Collect selected fields with alias
+        # TBD
+
+        # Group-by dataframe by aggregations
+        # TBD
+
+        # Union tables
         return []
 
     def create_table(self, ast: Expression) -> list:
@@ -148,7 +165,6 @@ class PostgresDBMocker(BaseRelationalDBMocker):
         return [{'msg': f'Altered table {alt.tablename}'}]
 
     def insert_values(self, ast: Expression) -> list:
-        __import__('pudb').set_trace()
         tablename = ast.find(exp.Table).this.name
         cols = [x.this for x in ast.find(exp.Schema).find_all(exp.Identifier) if x.this != tablename]
         rows = []
@@ -161,7 +177,7 @@ class PostgresDBMocker(BaseRelationalDBMocker):
         new_df = pd.DataFrame(rows, columns=cols)
         self._check_table_constraints(new_df, tablename)
         self.table_map[tablename] = pd.concat([df, new_df])
-        logger.info(f'Inserted [{len(new_df)}] rows into table [{tablename}]')
+        return [{'msg': f'Inserted [{len(new_df)}] rows into table [{tablename}]'}]
 
     def _check_table_constraints(self, df: pd.DataFrame, tablename: str):
         for i in range(len(df)):
