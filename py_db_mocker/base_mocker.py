@@ -55,6 +55,8 @@ class BaseRelationalDBMocker:
             rows = self.create_sequence(ast)
         elif 'ALTER' in tokens and 'TABLE' in tokens:
             rows = self.alter_table(ast)
+        elif 'INSERT' in tokens and 'INTO' in tokens:
+            rows = self.insert_values(ast)
         elif 'BEGIN' in tokens:
             pass
         elif 'COMMIT' in tokens:
@@ -90,6 +92,9 @@ class BaseRelationalDBMocker:
     def alter_table(self, ast: Expression) -> list:
         raise NotImplementedError()
 
+    def insert_values(self, ast: Expression) -> list:
+        raise NotImplementedError()
+
     def compile_sql(self, stmt: str, params: dict) -> str:
         raise NotImplementedError()
 
@@ -123,7 +128,7 @@ class PostgresDBMocker(BaseRelationalDBMocker):
         for c in ast.find_all(exp.ColumnDef):
             col_names.append(c.name)
             datatype = c.find(exp.DataType).this.name
-            dtypes.append(PG_DTYPE_TO_PANDAS.get(datatype))
+            dtypes.append(PG_DTYPE_TO_PANDAS.get(datatype) or 'str')
         tablename = ast.find(exp.Table).this.name
         df = pd.DataFrame([], columns=col_names)
         self.table_map[tablename] = df
@@ -141,6 +146,31 @@ class PostgresDBMocker(BaseRelationalDBMocker):
         from py_db_mocker.postgres_parser import PgParseAlterTable
         alt = PgParseAlterTable(sql=ast.sql())
         return [{'msg': f'Altered table {alt.tablename}'}]
+
+    def insert_values(self, ast: Expression) -> list:
+        __import__('pudb').set_trace()
+        tablename = ast.find(exp.Table).this.name
+        cols = [x.this for x in ast.find(exp.Schema).find_all(exp.Identifier) if x.this != tablename]
+        rows = []
+        insert = ast.find(exp.Values).expressions[0]
+        if len(list(insert.find_all(exp.Tuple))) == 1:
+            rows = [[col.this for col in insert.expressions]]
+        else:
+            rows = [[col.this for col in x.expressions] for x in insert.expressions]
+        df = self.table_map[tablename]
+        new_df = pd.DataFrame(rows, columns=cols)
+        self._check_table_constraints(new_df, tablename)
+        self.table_map[tablename] = pd.concat([df, new_df])
+        logger.info(f'Inserted [{len(new_df)}] rows into table [{tablename}]')
+
+    def _check_table_constraints(self, df: pd.DataFrame, tablename: str):
+        for i in range(len(df)):
+            row = df.iloc[i]
+            for col in df.columns:
+                v = row[col]
+                entry = f'{tablename}.{col}'
+                # TODO
+        return
 
     def compile_sql(self, stmt: str, params: dict = None) -> str:
         """ EXPERIMENTAL FUNC: NOT TO BE USED ON PRODUCTION QUERY """

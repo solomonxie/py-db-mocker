@@ -50,5 +50,5 @@ PG_FUNCTIONS = [
 PG_DTYPE_TO_PANDAS = {
     'INT': 'int',
     'VARCHAR': 'str',
-    'TIMESTAMPTZ': 'str',  # FIXME
+    'TIMESTAMPTZ': 'int',  # FIXME
 }

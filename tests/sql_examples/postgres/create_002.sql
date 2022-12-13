@@ -32,6 +32,11 @@ ALtER   TAbLE   ONlY email_email ALTER COLUMN id SET DEFAULT nextval('email_emai
 ALTER  TAbLE IF EXiSTS OnLY  email_email ADD CONSTRAINT email_email_pkey PRIMARY KEY (id);
 
 
+INSERT INTO email_email(id, email, created_at) VALUES(
+    1, 'a@a.com', '2022-12-13 17:02:40'
+);
+
+
 INSERT INTO email_email(email, domain_id) VALUES(
     ('a@aaa.com', 711),
     ('b@bbb.com', 712)
