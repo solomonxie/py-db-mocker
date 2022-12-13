@@ -25,10 +25,10 @@ class BaseRelationalDBMocker:
     KEYWORDS = []
 
     def __init__(self, *args, **kwargs):
-        self.table_map = {}
-        self.sequence_map = {}
-        self.constraint_map = {}
-        self.default_value_map = {}
+        self.table_map = kwargs.get('table_map') or {}
+        self.sequence_map = kwargs.get('sequence_map') or {}
+        self.constraint_map = kwargs.get('constraint_map') or {}
+        self.default_value_map = kwargs.get('default_value_map') or {}
         self.table_backup = None
 
     def execute(self, sql: str, params: dict = None):
@@ -82,6 +82,12 @@ class BaseRelationalDBMocker:
 
     def select(self, ast) -> list:
         __import__('pudb').set_trace()
+        # Build new tables from subquery
+        # TBD
+
+        # Build new tables from CTE
+        # TBD
+
         # Set alias in table_map according to "FROM" and "JOIN"
         # TBD
 
@@ -91,13 +97,20 @@ class BaseRelationalDBMocker:
         # Filter rows by "WHERE"
         # TBD
 
-        # Collect selected fields with alias
-        # TBD
-
         # Group-by dataframe by aggregations
         # TBD
 
+        # Collect selected fields with alias
+        # TBD
+
+        # Calculate built-in functions
+        # TBD
+
+        # Calculate window funtions
+        # TBD
+
         # Union tables
+        # TBD
         return []
 
     def create_table(self, ast: Expression) -> list:
